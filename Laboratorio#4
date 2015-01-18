@@ -1,0 +1,971 @@
+/*Claudia Bustamante 
+Laboratorio 4 - Sistemas Operativos 2014 
+Universidad de Santiago*/
+#include <vector>
+#include <algorithm>
+#include <string.h>
+#include <string>
+#include <math.h>
+#include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <stdlib.h>
+#include <stdio.h>
+#include <iomanip>
+#include <dirent.h>
+#include <xmmintrin.h>
+#include <ctype.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+using namespace std;
+
+typedef struct{
+	double rojo;
+	double verde;
+	double azul;
+}RGB;
+
+typedef struct{
+	bool derecha;
+	int posFila;
+	int posColumna;
+	double valor;
+}Error;
+
+typedef vector<vector<RGB> > MATRIZ;
+typedef vector<MATRIZ> IMAGEN;
+typedef vector<IMAGEN> IMAGENES;
+
+typedef struct{
+	MATRIZ mat1;
+	MATRIZ mat2;
+	int id;
+	int numHebras;
+}parametroHebra;
+
+//HEBRAS
+Error ecmMinh;
+
+pthread_mutex_t barrera = PTHREAD_MUTEX_INITIALIZER;
+
+RGB **transformarMatriz(MATRIZ matriz){
+	int f = matriz.size();
+	int c = matriz[0].size();
+
+	RGB **matrizAux;
+	int i,j;
+
+	matrizAux = (RGB **)malloc(f*sizeof(RGB *));
+
+	for (int i = 0; i < f; i++)
+	{
+		matrizAux[i] = (RGB *)malloc(c*sizeof(RGB));
+
+		for(int j = 0; j < c; j++)
+		{
+            matrizAux[i][j].rojo = 0;
+            matrizAux[i][j].verde = 0;
+            matrizAux[i][j].azul = 0;
+        }
+	}
+
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < c; j++)
+		{
+			matrizAux[i][j] = matriz[i][j];
+		}
+	}
+
+	return matrizAux;
+}
+
+MATRIZ nuevaMatriz(int c, int f){
+	MATRIZ matriz;
+
+	RGB blanco;
+	blanco.rojo = 255;
+	blanco.verde = 255;
+	blanco.azul = 255;
+
+	vector<RGB> aux;
+
+	for (int i = 0; i < c; i++)
+	{
+		aux.push_back(blanco);
+	}
+
+	for(int i = 0; i < f; i++)
+	{
+		matriz.push_back(aux);
+	}
+
+	return matriz;
+}
+
+MATRIZ fusionarMatriz(MATRIZ mat1, MATRIZ mat2, Error error){
+
+	int nuevaCol = 2*error.posColumna + mat1[0].size();
+	int nuevaFila = mat1.size()/2 + error.posFila + mat1.size();
+
+	MATRIZ fusion = nuevaMatriz(nuevaCol, nuevaFila);
+
+	int margen1, margen2;
+
+	if(error.derecha){
+		margen1 = 0;
+		margen2 = error.posColumna;
+	} else {
+		margen1 = error.posColumna;
+		margen2 = 0;
+	}
+
+	int cond1 = 0;
+	int cond2 = 0;
+	if(mat1.size() % 2 == 1){
+		cond1 = (mat1.size() + 1) / 2;
+		cond2 = cond1 - 1;
+	} else {
+		cond1 = mat1.size()/2;
+	}
+
+	for(int i = 0; i < mat2.size() ; i++)
+	{
+		for(int j = 0; j < mat2[0].size() ; j++)
+		{
+			fusion[i][j+margen2] = mat2[i][j];
+		}
+	}
+
+	for(int i = 0; i < mat1.size() ; i++)
+	{
+		for(int j = 0; j < mat1[0].size() ; j++)
+		{
+			fusion[i+error.posFila+cond2][j+margen1] = mat1[i][j];
+		}
+	}
+
+	return fusion;
+}
+
+double **crearMatriz(int f, int c){
+    double **matrizAux;
+    int i,j;
+
+    matrizAux = (double **)malloc(f*sizeof(double *));
+
+    for(i = 0; i < f; i++){
+
+    	//cout << "Hola2" << endl;
+        matrizAux[i] = (double *)malloc(c*sizeof(double));
+
+        for(j = 0; j < c; j++){
+            matrizAux[i][j] = 0;
+        }
+    }
+
+    return matrizAux;
+}
+
+vector<double> sepTerm (string linea){// Separa los numeros para guardarlos en los vectores
+
+    int tam;
+    char * term;
+    vector<double> vectorTerminos;
+
+    tam = linea.length();
+    char *cstr = new char[tam + 1];
+    strcpy (cstr, linea.c_str());
+    term = strtok (cstr, "[ ,]");
+    vectorTerminos.push_back ((double) atof (term));
+    while (term != NULL){
+        term = strtok (NULL, "[ ,]");
+        if (term != NULL){
+            vectorTerminos.push_back ((double) atof (term));
+        }
+    }
+    delete[] cstr;
+    return vectorTerminos;
+}
+/*Claudia Bustamante */
+MATRIZ LeerMatriz(string nombreArchivo){
+	string line;
+	ifstream fichero;
+	MATRIZ matrizGeneral;
+	fichero.open(nombreArchivo.c_str());
+	if(fichero.fail()){
+		cout << "Error: " << nombreArchivo << endl;
+	}else{
+
+		while(getline(fichero,line)){
+			vector<double> cosa;
+			cosa=sepTerm(line);
+			vector<RGB> coso;
+			for (unsigned int i = 0; i < cosa.size(); i=i+3){
+				RGB aux;
+				aux.rojo=cosa[i];
+				aux.verde=cosa[i+1];
+				aux.azul=cosa[i+2];
+				coso.push_back(aux);
+			}
+			matrizGeneral.push_back(coso);
+		}
+		//cout << "tengo la matriz completa!!" << endl;
+		return matrizGeneral;
+	}
+
+	return matrizGeneral;
+}
+
+void imprimirMatriz(MATRIZ matriz){
+	cout << "[" ;
+	for (int i = 0; i < matriz.size(); i++){
+		for (int j = 0; j < matriz[0].size(); j++){
+			if ((i == (matriz.size()-1)) && (j == (matriz[0].size() - 1))) {
+				cout << "[ " << matriz[i][j].rojo << ", " << matriz[i][j].verde << ", " << matriz[i][j].azul << "]]";
+			} else if (j == (matriz[0].size() - 1)) {
+				cout << "[ " << matriz[i][j].rojo << ", " << matriz[i][j].verde << ", " << matriz[i][j].azul << "]]," << endl;
+			} else if (j == 0) {
+				cout << "[[ " << matriz[i][j].rojo << ", " << matriz[i][j].verde << ", " << matriz[i][j].azul << "], ";
+			} else {
+				cout << "[ " << matriz[i][j].rojo << ", " << matriz[i][j].verde << ", " << matriz[i][j].azul << "], ";
+			}
+
+
+		}
+	}
+	cout << "]" << endl;
+}
+
+void imprimirPuntero(double **matriz, int f, int c){
+	for (int i = 0; i < f; i++){
+		for (int j = 0; j < c; j++){
+			cout << " " << matriz[i][j];
+		}
+		cout << endl;
+	}
+	cout << "\n\n\n";
+}
+
+int arrayTam(MATRIZ matriz){
+	int ancho = 0;
+	int largo = 0;
+	for (unsigned int i = 0; i < matriz.size(); i++)
+	{
+		largo=matriz[i].size();
+		ancho++;
+	}
+
+	//cout << largo << " :largo | ancho: " << ancho << endl;
+
+	if(ancho%2 == 0){
+		return largo*(ancho/2);
+	} else {
+		return largo*(ancho+1)/2;
+	}
+}
+
+vector<string> nombresCarpetas(string direccion){
+	string direccionCompleta = "./" + direccion;
+	struct dirent *pDirent;
+	vector<string> nombres;
+	DIR *pDir;
+	pDir = opendir(direccionCompleta.c_str());
+	if (pDir != NULL) {
+		while ((pDirent = readdir(pDir)) != NULL) {
+			if(strcmp(pDirent->d_name,"..")!=0 && strcmp(pDirent->d_name,".")!=0){
+				nombres.push_back(pDirent->d_name);
+			}
+		}
+		closedir (pDir);
+	}
+
+	sort(nombres.begin(), nombres.end());
+
+	return nombres; //retorna un vector con los nombres de los archivos
+}
+
+Error ErrorCuadraticoMedio(MATRIZ mat1, MATRIZ mat2){
+	Error ecmMin;
+	ecmMin.valor = 100000;
+
+	double acumRed, acumBlue, acumGreen;
+	double n, nAux;
+	double ECM;
+
+	int cond1 = 0;
+	int cond2 = 0;
+	if(mat1.size() % 2 == 1){
+		cond1 = (mat1.size() + 1) / 2;
+		cond2 = cond1 - 1;
+		//cout << "cond1: " << cond1 << " cond2: " << cond2 << endl;
+		n = arrayTam(mat1);
+	} else {
+		cond1 = mat1.size()/2;
+		n = arrayTam(mat1);
+	}
+
+	for(int f = 0 ; f < cond1 ; f++){
+		for(unsigned int c = 0; c < mat1[0].size() ; c++){
+			acumRed = 0;
+			acumBlue = 0;
+			acumGreen = 0;
+
+			int i1 = 0;
+			for (int i2 = f; i2 < cond1 ; i2++){
+				int j1 = 0;
+				for (unsigned int j2 = c; j2 < mat1[0].size() ; j2++){
+					acumRed = pow((mat1[i1][j1].rojo - mat2[i2+cond2][j2].rojo),2) + acumRed;
+					acumBlue = pow((mat1[i1][j1].azul - mat2[i2+cond2][j2].azul),2) + acumBlue;
+					acumGreen = pow((mat1[i1][j1].verde - mat2[i2+cond2][j2].verde),2) + acumGreen;
+
+					j1++;
+				}
+				i1++;
+			}
+
+			nAux = n - ( c*cond1 + mat1[0].size()*f - c*f );
+
+			acumRed = sqrt(acumRed/nAux);
+			acumBlue = sqrt(acumBlue/nAux);
+			acumGreen = sqrt(acumGreen/nAux);
+
+
+			ECM = (acumRed + acumGreen + acumBlue) / 3;
+			if((ECM < ecmMin.valor) && (nAux > n/10)){
+				ecmMin.valor = ECM;
+				ecmMin.posColumna = c;
+				ecmMin.posFila = f;
+				//cout << "El ECM es de: "<< ecmMin.valor << endl;
+				if(ecmMin.valor == 0){
+					cout << "El ECM es de: "<< ecmMin.valor << endl;
+					return ecmMin;
+				}
+			}
+			//cout << "El ECM es de: "<< ECM << endl;
+		}
+	}
+	//For a la izquierda
+	for(int f = 0 ; f < cond1 ; f++){
+		for(unsigned int c = 0; c < mat1[0].size() ; c++){
+			acumRed = 0;
+			acumBlue = 0;
+			acumGreen = 0;
+
+			int i1 = f;
+			for (int i2 = 0; i2 < (cond1-f) ; i2++){
+				int j1 = c;
+				for (unsigned int j2 = 0; j2 < (mat1[0].size()-c) ; j2++){
+					acumRed = pow((mat1[i1][j1].rojo - mat2[i2+cond2][j2].rojo),2) + acumRed;
+					acumBlue = pow((mat1[i1][j1].azul - mat2[i2+cond2][j2].azul),2) + acumBlue;
+					acumGreen = pow((mat1[i1][j1].verde - mat2[i2+cond2][j2].verde),2) + acumGreen;
+
+					j1++;
+				}
+				i1++;
+			}
+
+			nAux = n - ( c*cond1 + mat1[0].size()*f - c*f );
+			acumRed = sqrt(acumRed/nAux);
+			acumBlue = sqrt(acumBlue/nAux);
+			acumGreen = sqrt(acumGreen/nAux);
+
+
+			ECM = (acumRed + acumGreen + acumBlue) / 3;
+			if((ECM < ecmMin.valor) && (nAux > n/10)){
+				ecmMin.valor = ECM;
+				ecmMin.posColumna = c;
+				ecmMin.posFila = f;
+				ecmMin.derecha = false;
+				//cout << "El ECM es de: "<< ecmMin.valor << endl;
+				if(ecmMin.valor == 0){
+					cout << "El ECM es de: "<< ecmMin.valor << endl;
+					return ecmMin;
+					//cout << "El ECM es de: "<< ecmMin.valor << endl;
+					//cout << "acumRed: " << acumRed << " acumBlue: " << acumBlue << " acumGreen: " << acumGreen << endl;
+					//cout << "f: " << f << " c: " << c << endl;
+				}
+			}
+		}
+	}
+	return ecmMin;
+}
+
+void *funcionECMhebra(void *parametro){
+	MATRIZ mat1;
+	MATRIZ mat2;
+	int id;
+	int numHebras;
+
+	parametroHebra recibo = *(parametroHebra*) parametro;
+	mat1=recibo.mat1;
+	mat2=recibo.mat2;
+	id=recibo.id;
+	numHebras=recibo.numHebras;
+//	cout << "id: " << id << endl;
+	//Error ecmMin;
+	//ecmMinh.valor = 100000;
+	double acumRed, acumBlue, acumGreen;
+	double n, nAux;
+	double ECM;
+	int cond1 = 0;
+	int cond2 = 0;
+	
+/*Claudia Bustamante */
+	if(mat1.size() % 2 == 1){
+		cond1 = (mat1.size() + 1) / 2;
+		cond2 = cond1 - 1;
+		//cout << "cond1: " << cond1 << " cond2: " << cond2 << endl;
+		n = arrayTam(mat1);
+	} else {
+		cond1 = mat1.size()/2;
+		n = arrayTam(mat1);
+	}
+
+	for(int f = 0 ; f < cond1 ; f++){
+			for(unsigned int c = 0; c < mat1[0].size() ; c++){
+				if((c%numHebras)==id){
+
+					acumRed = 0;
+					acumBlue = 0;
+					acumGreen = 0;
+
+					int i1 = 0;
+					for (int i2 = f; i2 < cond1 ; i2++){
+						int j1 = 0;
+						for (unsigned int j2 = c; j2 < mat1[0].size() ; j2++){
+							acumRed = pow((mat1[i1][j1].rojo - mat2[i2+cond2][j2].rojo),2) + acumRed;
+							acumBlue = pow((mat1[i1][j1].azul - mat2[i2+cond2][j2].azul),2) + acumBlue;
+							acumGreen = pow((mat1[i1][j1].verde - mat2[i2+cond2][j2].verde),2) + acumGreen;
+							j1++;
+						}
+						i1++;
+					}
+
+					nAux = n - ( c*cond1 + mat1[0].size()*f - c*f );
+					acumRed = sqrt(acumRed/nAux);
+					acumBlue = sqrt(acumBlue/nAux);
+					acumGreen = sqrt(acumGreen/nAux);
+
+
+					ECM = (acumRed + acumGreen + acumBlue) / 3;
+					pthread_mutex_lock(&barrera);
+					if((ECM < ecmMinh.valor) && (nAux > n/10)){
+						ecmMinh.valor = ECM;
+						ecmMinh.posColumna = c;
+						ecmMinh.posFila = f;
+						//cout << "El ECM es de: "<< ecmMin.valor << endl;
+						if(ecmMinh.valor == 0){
+							cout << "El ECM es de: "<< ecmMinh.valor << endl;
+							pthread_mutex_unlock(&barrera);
+							//return;
+						}
+					}
+					pthread_mutex_unlock(&barrera);
+					//cout << "El ECM es de: "<< ECM << endl;
+				}
+			}
+		}
+		//For a la izquierda
+		for(int f = 0 ; f < cond1 ; f++){
+			for(unsigned int c = 0; c < mat1[0].size() ; c++){
+				if((c%numHebras)==id){
+					acumRed = 0;
+					acumBlue = 0;
+					acumGreen = 0;
+
+					int i1 = f;
+					for (int i2 = 0; i2 < (cond1-f) ; i2++){
+						int j1 = c;
+						for (unsigned int j2 = 0; j2 < (mat1[0].size()-c) ; j2++){
+							acumRed = pow((mat1[i1][j1].rojo - mat2[i2+cond2][j2].rojo),2) + acumRed;
+							acumBlue = pow((mat1[i1][j1].azul - mat2[i2+cond2][j2].azul),2) + acumBlue;
+							acumGreen = pow((mat1[i1][j1].verde - mat2[i2+cond2][j2].verde),2) + acumGreen;
+
+							j1++;
+						}
+						i1++;
+					}
+
+					nAux = n - ( c*cond1 + mat1[0].size()*f - c*f );
+					acumRed = sqrt(acumRed/nAux);
+					acumBlue = sqrt(acumBlue/nAux);
+					acumGreen = sqrt(acumGreen/nAux);
+
+					pthread_mutex_lock(&barrera);
+					ECM = (acumRed + acumGreen + acumBlue) / 3;//contiene el ecm de la hebra
+					if((ECM < ecmMinh.valor) && (nAux > n/10)){
+						ecmMinh.valor = ECM;
+						ecmMinh.posColumna = c;
+						ecmMinh.posFila = f;
+						ecmMinh.derecha = false;
+						//cout << "El ECM es de: "<< ecmMin.valor << endl;
+						if(ecmMinh.valor == 0){
+							cout << "El ECM es de: "<< ecmMinh.valor << endl;
+							pthread_mutex_unlock(&barrera);
+							//return;
+							//cout << "El ECM es de: "<< ecmMin.valor << endl;
+							//cout << "acumRed: " << acumRed << " acumBlue: " << acumBlue << " acumGreen: " << acumGreen << endl;
+							//cout << "f: " << f << " c: " << c << endl;
+						}
+					}
+					pthread_mutex_unlock(&barrera);
+				}
+			}
+		}
+}
+
+void ErrorCuadraticoMediohebra(MATRIZ mat1, MATRIZ mat2, int numHebras){
+	vector<pthread_t> vectorHebras(numHebras);
+	ecmMinh.valor = 100000;
+	for (int i = 0; i < numHebras; i++){
+		parametroHebra pam;
+		pam.mat1 = mat1; 
+		pam.mat2 = mat2;
+		pam.id = i;
+		pam.numHebras = numHebras;
+		pthread_create(&vectorHebras[i], NULL, funcionECMhebra, new parametroHebra(pam));
+	}
+	for (int j = 0; j < numHebras; j++){
+		pthread_join(vectorHebras[j], NULL);
+	}
+
+}
+
+void funcionHijo(string carpetaImagen, string carpetaPrincipal){
+	vector<string> nombresDirectorios;
+	vector<string> nombresArchivos;
+	MATRIZ imagenLeida;
+	nombresDirectorios = nombresCarpetas(carpetaPrincipal);
+ 	nombresArchivos = nombresCarpetas(carpetaPrincipal+"/"+carpetaImagen);
+ 	IMAGEN imagen;
+ 	for (int k = 0; k < nombresArchivos.size(); k++){
+// 		cout << "carpeta " << carpetaImagen << " contiene: " << nombresArchivos[k] << endl;
+ 		imagenLeida = LeerMatriz(carpetaPrincipal+"/"+carpetaImagen+"/"+nombresArchivos[k]);
+  		imagen.push_back(imagenLeida);
+ 	}
+ 		MATRIZ matrizAux1 = imagen[0];
+		MATRIZ matrizAux2 = imagen[1];
+		Error errorNormal = ErrorCuadraticoMedio(matrizAux1, matrizAux2);
+		cout << "Error Normal: " << errorNormal.valor << " Fila: " << errorNormal.posFila << " Columna: " << errorNormal.posColumna << endl;
+}
+/*Claudia Bustamante */
+void funcionHijoHebra(string carpetaImagen, string carpetaPrincipal, int numHebras){
+	vector<string> nombresDirectorios;
+	vector<string> nombresArchivos;
+	MATRIZ imagenLeida;
+	nombresDirectorios = nombresCarpetas(carpetaPrincipal);
+ 	nombresArchivos = nombresCarpetas(carpetaPrincipal+"/"+carpetaImagen);
+ 	IMAGEN imagen;
+ 	for (int k = 0; k < nombresArchivos.size(); k++){
+// 		cout << "carpeta " << carpetaImagen << " contiene: " << nombresArchivos[k] << endl;
+ 		imagenLeida = LeerMatriz(carpetaPrincipal+"/"+carpetaImagen+"/"+nombresArchivos[k]);
+  		imagen.push_back(imagenLeida);
+ 	}
+ 		MATRIZ matrizAux1 = imagen[0];
+		MATRIZ matrizAux2 = imagen[1];
+		ErrorCuadraticoMediohebra(matrizAux1, matrizAux2, numHebras);
+		cout << "Error Normal: " << ecmMinh.valor << " Fila: " << ecmMinh.posFila << " Columna: " << ecmMinh.posColumna << endl;
+}
+
+// VECTOR COMPUTING 
+double **diferencia(double **matriz1, double **matriz2, int filas, int columnas){
+	double **respuesta = crearMatriz(filas, columnas);
+
+	for (int i = 0; i < filas; i++){ //para cada posicion de filas en la matriz
+		for(int j = 0; j < columnas; j = j+4){ //y cada posicion en columnas se le suma 4 para ir a la posición siguiente
+			//cout << i << " " << j << "\n"; //imprime posicion i espacio posicion j y salto de linea
+			__m128 *_matriz1 = (__m128*)&matriz1[i][j]; //castea a tipo de dato __m128 de la matriz 1
+			__m128 *_matriz2 = (__m128*)&matriz2[i][j]; //castea a tipo de dato __m128 de la matriz 2
+			__m128 *_matriz3 = (__m128*)&respuesta[i][j]; //genera una respuesta
+
+			*_matriz3 = _mm_sub_ps(*_matriz1, *_matriz2); //almacena el resultado
+		}
+	}
+
+	return respuesta;
+}
+
+double **cuadrado(double **valor1, int filas, int columnas){
+	double **resultante = crearMatriz(filas, columnas);
+
+	for(int i = 0; i < filas; i++){
+		for(int j = 0; j < columnas; j = j + 4){
+			__m128 *_tmp1 = (__m128*)&valor1[i][j];
+			__m128 *_tmpFinal = (__m128*)&resultante[i][j];
+			*_tmpFinal = _mm_mul_ps(*_tmp1,*_tmp1);
+		}
+	}
+
+	return resultante;
+}
+
+Error ErrorCuadraticoMedioVectorComputing(MATRIZ mat1, MATRIZ mat2){
+	Error ecmMin;
+	ecmMin.valor = 100000;
+
+	double acumRed, acumBlue, acumGreen;
+	double n, nAux;
+	double ECM;
+
+	double **matrizRoja1, **matrizVerde1, **matrizAzul1, **matrizRoja2, **matrizVerde2, **matrizAzul2;
+	double **diferenciaRoja, **diferenciaVerde, **diferenciaAzul;
+	double **cuadradoRoja, **cuadradoVerde, **cuadradoAzul;
+
+	int cond1 = 0;
+	int cond2 = 0;
+	if(mat1.size() % 2 == 1){
+		cond1 = (mat1.size() + 1) / 2;
+		cond2 = cond1 - 1;
+		//cout << "cond1: " << cond1 << " cond2: " << cond2 << endl;
+		n = arrayTam(mat1);
+	} else {
+		cond1 = mat1.size()/2;
+		cond2 = cond1;
+		n = arrayTam(mat1);
+	}
+
+	matrizRoja1 = crearMatriz((cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+	matrizVerde1 = crearMatriz((cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+	matrizAzul1 = crearMatriz((cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+
+	matrizRoja2 = crearMatriz((cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+	matrizVerde2 = crearMatriz((cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+	matrizAzul2 = crearMatriz((cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+
+	//For a la derecha
+	for(int f = 0 ; f < (cond1-(cond1%4)) ; f++){
+		for(unsigned int c = 0; c < (mat1[0].size()-(mat1[0].size()%4)) ; c++){
+			acumRed = 0;
+			acumGreen = 0;
+			acumBlue = 0;
+
+			/*cout << "Bandera 0" << endl;		*/
+
+			int i1 = 0;
+			for (int i2 = f; i2 < (cond1-(cond1%4)) ; i2++){
+				int j1 = 0;
+				for (unsigned int j2 = c; j2 < (mat1[0].size()-(mat1[0].size()%4)) ; j2++){
+					//cout << "i1: " << i1 << " j1: " << j1 << endl;
+
+					matrizRoja1[i1][j1] = mat1[i1][j1].rojo;
+					matrizVerde1[i1][j1] = mat1[i1][j1].verde;
+					matrizAzul1[i1][j1] = mat1[i1][j1].azul;
+
+					matrizRoja2[i1][j1] = mat2[i2+cond2][j2].rojo;
+					matrizVerde2[i1][j1] = mat2[i2+cond2][j2].verde;
+					matrizAzul2[i1][j1] = mat2[i2+cond2][j2].azul;
+
+					j1++;
+				}
+				i1++;
+			}
+
+			//imprimirPuntero(matrizVerde1, cond1-f, mat1[0].size()-c);
+			//imprimirPuntero(matrizVerde2, cond1-f, mat1[0].size()-c);;
+/*Claudia Bustamante */
+			/*cout << "f " << f << " c " << c << " conf1-f " << cond1-f << " mat1[0].size()-c " << mat1[0].size()-c << endl;*/
+
+			diferenciaRoja = diferencia(matrizRoja1, matrizRoja2, (cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+			diferenciaVerde = diferencia(matrizVerde1, matrizVerde2, (cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+			diferenciaAzul = diferencia(matrizAzul1, matrizAzul2, (cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+
+			for (int i = 0; i < (cond1-(cond1%4))-f ; i++){
+				for (unsigned int j = 0; j < (mat1[0].size()-(mat1[0].size()%4))-c ; j++){
+					//cout << "i1: " << i1 << " j1: " << j1 << endl;
+
+					matrizRoja1[i][j] = 0;
+					matrizVerde1[i][j] = 0;
+					matrizAzul1[i][j] = 0;
+
+					matrizRoja2[i][j] = 0;
+					matrizVerde2[i][j] = 0;
+					matrizAzul2[i][j] = 0;
+				}
+			}
+
+			/*cout << "Libera Matrices" << endl;*/
+
+			cuadradoRoja = cuadrado(diferenciaRoja, (cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+			cuadradoVerde = cuadrado(diferenciaVerde, (cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+			cuadradoAzul = cuadrado(diferenciaAzul, (cond1-(cond1%4)), (mat1[0].size()-(mat1[0].size()%4)));
+
+			/*cout << "Libera diferencias" << endl;*/
+
+			for(int i = 0 ; i < (cond1-(cond1%4))-f ; i++){
+				free(diferenciaRoja[i]);
+				free(diferenciaVerde[i]);
+				free(diferenciaAzul[i]);
+			}
+
+			free(diferenciaRoja);
+			free(diferenciaVerde);
+			free(diferenciaAzul);
+
+			for (int i = 0; i < (cond1-(cond1%4))-f; i++)
+			{
+				for (int j = 0; j < (mat1[0].size()-(mat1[0].size()%4))-c; j++)
+				{
+					//cout << "i " << i << " j " << j << endl;
+					acumRed = cuadradoRoja[i][j] + acumRed;
+					acumGreen = cuadradoAzul[i][j] + acumGreen;
+					acumBlue = cuadradoVerde[i][j] + acumBlue;
+				}
+			}
+
+			/*cout << "Libera cuadrados" << endl;*/
+
+			for(int i = 0 ; i < (cond1-(cond1%4))-f ; i++){
+				free(cuadradoRoja[i]);
+				free(cuadradoAzul[i]);
+				free(cuadradoVerde[i]);
+			}
+
+			free(cuadradoRoja);
+			free(cuadradoAzul);
+			free(cuadradoVerde);
+
+			/*cout << "Bandera  2" << endl;*/
+
+			nAux = n - ( c*(cond1-(cond1%4)) + (mat1[0].size()-(mat1[0].size()%4))*f - c*f );
+
+			acumRed = sqrt(acumRed/nAux);
+			acumBlue = sqrt(acumBlue/nAux);
+			acumGreen = sqrt(acumGreen/nAux);
+
+			ECM = (acumRed + acumGreen + acumBlue) / 3;
+			if((ECM < ecmMin.valor) && (nAux > n/10)){
+				ecmMin.valor = ECM;
+				ecmMin.posColumna = c;
+				ecmMin.posFila = f;
+				ecmMin.derecha = true;
+				//cout << "El ECM es de: "<< ecmMin.valor << endl;
+				if(ecmMin.valor == 0){
+					/*cout << "El ECM es de: "<< ecmMin.valor << endl;*/
+					return ecmMin;
+					//cout << "El ECM es de: "<< ecmMin.valor << endl;
+					//cout << "acumRed: " << acumRed << " acumBlue: " << acumBlue << " acumGreen: " << acumGreen << endl;
+					//cout << "f: " << f << " c: " << c << endl;
+				}
+			}
+
+			//cout << "El ECM es de: "<< ECM << endl;
+		}
+	}
+	return ecmMin;
+}
+
+/*Claudia Bustamante */
+int main(int argc, char **argv){
+	int numeroFotos=0;
+	vector<string> nombresDirectorios;
+	vector<string> nombresArchivos;
+	IMAGENES imagenesGeneral;
+	string aux;
+	string carpetaPrincipal;
+	string carpetaDestino;
+	int numHebras=0;
+/*Claudia Bustamante */
+	string pVal = ""; // Indica el uso de procesos, uno por imagen
+	int pflag=0;
+	//int tVal = ""; // Recibe el número de hebras c utilizar
+	int tflag=0;
+	string AVal = ""; // Ocupa procesos, hebras y vector computing
+	int Aflag=0;
+	//string vVal = ""; // Ocupa vector computing
+	int vflag=0;
+	string oVal = ""; // Carpeta destino
+	int oflag=0;
+	//string fVal = ""; // Carpeta origen
+	int fflag=0;
+	int c;
+
+	while((c = getopt(argc,argv,"pt:c:vo:f:")) != -1)
+		switch(c){
+			case 'p':
+					pflag = 1;
+					break;
+			case 't':
+					tflag = 1;
+					numHebras = atoi(optarg);
+					break;
+			case 'c':
+					Aflag = 1;
+					AVal = optarg;
+					break;
+			case 'v':
+					vflag = 1;
+					break;
+			case 'o':
+					oflag = 1;
+					carpetaDestino= optarg;
+					break;
+			case 'f': //carpeta de matrices
+					fflag = 1;
+					carpetaPrincipal = optarg;
+
+					break;
+			case '?':
+				if (optopt == 't'||optopt == 'c'||optopt == 'f'||optopt == 'o'){ //si la bandera hebras o la bandera c no reciben argumento, está mal
+					fprintf (stderr, "Opcion -%c requiere argumento.\n", optopt);
+					exit(0);
+				}
+				else if (pflag+tflag+Aflag+vflag>1){
+					fprintf (stderr, "Banderas excluyentes incorrectas `-%c'.\n", optopt);
+					exit(0);
+				}
+				else if (isprint (optopt)){
+					fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+					exit(0);
+				}
+				return 1;
+			default:
+				abort();
+			}
+
+	if (fflag==0 || oflag==0) { //debe estar la bandera f y o
+			cout << "Faltan banderas\n";
+			exit(0);
+	}
+	if (tflag==1 || Aflag==1){ // si es hebras y procesos o All entonces 
+		if(numHebras<=0){
+			cout << "Debe ingresar numero de hebras." << endl;
+			exit(0);
+		}
+	}
+	if(tflag==1){
+		nombresDirectorios=nombresCarpetas(carpetaPrincipal); 
+		numeroFotos=nombresDirectorios.size();
+		int fd[numeroFotos][2];
+		int pid;
+		int id, id2;
+		
+		for (int a = 0; a < numeroFotos ; a++){
+      		pipe(fd[a]); //asignación de pipes
+   		}
+		for (int i = 0; i < numeroFotos; i++){
+			pid=fork();
+			if(pid==0){ //si es padre 
+				close(fd[i][0]); // escribe en w
+				id=i; // identificador del proceso
+         		break;
+			}else{ // si es hijo 
+				pid=1;
+				close(fd[i][1]); // escribe en x
+			}
+		}
+		char mensajep_h[100];
+		char mensajeh_p[100];
+		if(pid==1){  // si soy hijo
+			int cont=0;
+			string asd;
+			while(true){
+				if(cont==numeroFotos){ // si ya leyó 3 veces 
+					//cout << "Soy el ultimo hijo: " << cont << " y termine " << endl;
+					break;
+				}
+				stringstream lei;
+			 	read(fd[cont][0],mensajep_h,100);
+			 	stringstream hijoLee;
+			 	hijoLee << mensajep_h;
+			 	//cout << "Soy hijo: " << cont << " y lei: " << hijoLee.str() << endl;
+			 	funcionHijoHebra(hijoLee.str(), carpetaPrincipal,numHebras);
+				cont++;
+				sleep(1);
+			}			
+		}else if (pid==0){ // si soy padre
+			string aux;
+			aux=nombresDirectorios[id];
+			strcpy(mensajep_h,aux.c_str());
+			write(fd[id][1],mensajep_h,100); //escribo el mensaje de tamaño 100 en el pipe [x][w]
+			//cout << "Soy padre y el mensaje que envio es: " << mensajep_h << " al hijo: " << id << endl;
+			sleep(10);
+		}
+
+	}
+	if (pflag==1){
+		//cout << "Acá se hace con procesos." << endl;
+		nombresDirectorios=nombresCarpetas(carpetaPrincipal); 
+		numeroFotos=nombresDirectorios.size();
+		int fd[numeroFotos][2];
+		int pid;
+		int id, id2;
+		
+		for (int a = 0; a < numeroFotos ; a++){
+      		pipe(fd[a]); //asignación de pipes
+   		}
+		for (int i = 0; i < numeroFotos; i++){
+			pid=fork();
+			if(pid==0){ //si es padre 
+				close(fd[i][0]); // escribe en w
+				id=i; // identificador del proceso
+         		break;
+			}else{ // si es hijo 
+				pid=1;
+				close(fd[i][1]); // escribe en x
+			}
+		}
+		char mensajep_h[100];
+		char mensajeh_p[100];
+		if(pid==1){  // si soy hijo
+			int cont=0;
+			string asd;
+			while(true){
+				if(cont==numeroFotos){ // si ya leyó 3 veces 
+					//cout << "Soy el ultimo hijo: " << cont << " y termine " << endl;
+					break;
+				}
+				stringstream lei;
+			 	read(fd[cont][0],mensajep_h,100);
+			 	stringstream hijoLee;
+			 	hijoLee << mensajep_h;
+			 	//cout << "Soy hijo: " << cont << " y lei: " << hijoLee.str() << endl;
+			 	funcionHijo(hijoLee.str(), carpetaPrincipal);
+				cont++;
+				sleep(1);
+			}			
+		}else if (pid==0){ // si soy padre
+			string aux;
+			aux=nombresDirectorios[id];
+			strcpy(mensajep_h,aux.c_str());
+			write(fd[id][1],mensajep_h,100); //escribo el mensaje de tamaño 100 en el pipe [x][w]
+			//cout << "Soy padre y el mensaje que envio es: " << mensajep_h << " al hijo: " << id << endl;
+			sleep(10);
+		}
+	}
+	if (Aflag==1){
+		cout << "Acá se hace con todo." << endl;
+		exit(0);
+	}
+	/*Claudia Bustamante */
+	if (vflag==1){
+		nombresDirectorios=nombresCarpetas(carpetaPrincipal);
+		for (int i = 0; i < nombresDirectorios.size(); i++){
+			//cout << " " << nombresDirectorios[i];
+			nombresArchivos=nombresCarpetas(carpetaPrincipal+"/" + nombresDirectorios[i]);
+			IMAGEN imagen;
+			for (unsigned int j = 0; j < nombresArchivos.size() ; j++){
+				//cout << "archivos: " << nombresArchivos[j] << endl;
+				imagen.push_back(LeerMatriz(carpetaPrincipal+"/"+nombresDirectorios[i]+"/"+nombresArchivos[j]));
+			}
+			imagenesGeneral.push_back(imagen);
+			imagen.clear();
+		}
+		IMAGEN imagenAux = imagenesGeneral[0];
+		MATRIZ matrizAux1 = imagenAux[0];
+		MATRIZ matrizAux2 = imagenAux[1];
+		
+		//Error errorNormal = ErrorCuadraticoMedio(matrizAux1, matrizAux2);
+		Error errorVC = ErrorCuadraticoMedioVectorComputing(matrizAux1, matrizAux2);
+		//cout << "Error Normal: " << errorNormal.valor << " Fila: " << errorNormal.posFila << " Columna: " << errorNormal.posColumna << endl;
+		cout << "Error VC: " << errorVC.valor << " Fila: " << errorVC.posFila << " Columna: " << errorVC.posColumna << endl;
+
+        MATRIZ fusion = fusionarMatriz(matrizAux1,matrizAux2,errorVC);
+        //imprimirMatriz(fusion);
+	}
+		
+}
